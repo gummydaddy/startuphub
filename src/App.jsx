@@ -22,16 +22,14 @@ const API = {
   },
 
   async signup(email, username, password) {
-    const response = await fetch(`${API_BASE_URL}/api/founders/`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        user: { email, username, password }
-      }),
+      body: JSON.stringify({ email, username, password }),
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Signup failed');
+      throw new Error(error.error || 'Signup failed');
     }
     return response.json();
   },

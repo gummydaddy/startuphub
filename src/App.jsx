@@ -1,103 +1,177 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Users, MessageSquare, Target, TrendingUp, Video, X, Check, RefreshCw, Send, Heart, Rocket, Brain, Zap, Code, DollarSign } from 'lucide-react';
+import { Camera, Users, MessageSquare, Target, TrendingUp, Video, X, Check, RefreshCw, Send, Heart, Rocket, LogOut, User } from 'lucide-react';
 
-// Mock API service (replace with real backend calls)
+// API Configuration
+const API_BASE_URL = 'http://localhost:8000';
+
 const API = {
+  async login(email, password) {
+    const response = await fetch(`${API_BASE_URL}/api/token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem('access_token', data.access);
+      localStorage.setItem('refresh_token', data.refresh);
+      return data;
+    }
+    const error = await response.json();
+    throw new Error(error.detail || 'Login failed');
+  },
+
+  async signup(email, username, password) {
+    const response = await fetch(`${API_BASE_URL}/api/founders/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        user: { email, username, password }
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Signup failed');
+    }
+    return response.json();
+  },
+
   async createProfile(data) {
-    await new Promise(r => setTimeout(r, 500));
-    return { id: Date.now(), ...data };
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/founders/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Profile creation failed');
+    return response.json();
   },
+
+  async getCurrentProfile() {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/founders/me/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return null;
+    return response.json();
+  },
+
   async getFounders(filters = {}) {
-    await new Promise(r => setTimeout(r, 300));
-    return mockFounders;
+    const token = localStorage.getItem('access_token');
+    const params = new URLSearchParams(filters);
+    const response = await fetch(`${API_BASE_URL}/api/founders/?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
   },
+
   async createIdea(data) {
-    await new Promise(r => setTimeout(r, 500));
-    return { id: Date.now(), ...data, upvotes: 0, comments: [] };
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/ideas/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to create idea');
+    return response.json();
   },
-  async matchRandomFounder(currentUser) {
-    await new Promise(r => setTimeout(r, 800));
-    const available = mockFounders.filter(f => f.id !== currentUser?.id);
-    return available[Math.floor(Math.random() * available.length)];
+
+  async getIdeas() {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/ideas/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
+  async matchRandomFounder() {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/matching/roulette/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('No matches available');
+    return response.json();
+  },
+
+  async getRooms() {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/rooms/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
   }
 };
 
-// Mock data
-const mockFounders = [
-  {
-    id: 1,
-    name: "Sarah Chen",
-    country: "Singapore",
-    timezone: "GMT+8",
-    stage: "MVP",
-    industry: "FinTech",
-    skills: ["Tech", "Design"],
-    lookingFor: "Co-founder",
-    personality: ["🚀 Fast executor", "🔧 Technical builder"],
-    currentGoal: "Building a crypto wallet for SEA markets - need growth marketer",
-    online: true
-  },
-  {
-    id: 2,
-    name: "Marcus Johnson",
-    country: "USA",
-    timezone: "EST",
-    stage: "Launched",
-    industry: "AI",
-    skills: ["Marketing", "Sales"],
-    lookingFor: "Feedback",
-    personality: ["💬 Sales & pitch person", "🎯 Growth hacker"],
-    currentGoal: "Scaling AI writing tool - 500 users, looking for technical co-founder",
-    online: true
-  },
-  {
-    id: 3,
-    name: "Priya Sharma",
-    country: "India",
-    timezone: "IST",
-    stage: "Idea",
-    industry: "EdTech",
-    skills: ["Ops", "Design"],
-    lookingFor: "Just networking",
-    personality: ["🧠 Deep thinker", "🚀 Fast executor"],
-    currentGoal: "Validating AI-powered career counseling platform for college students",
-    online: false
-  }
-];
-
-const mockIdeas = [
-  {
-    id: 1,
-    author: "Alex Turner",
-    problem: "Small businesses can't track daily cash flow easily",
-    solution: "WhatsApp-based AI accountant",
-    stage: "Just idea",
-    needHelp: "Brutal feedback + someone technical",
-    upvotes: 12,
-    comments: 5,
-    timestamp: "2 hours ago"
-  }
-];
-
 function App() {
-  const [currentView, setCurrentView] = useState('home');
+  const [currentView, setCurrentView] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      try {
+        const profile = await API.getCurrentProfile();
+        if (profile) {
+          setCurrentUser(profile);
+          setIsAuthenticated(true);
+          setCurrentView('home');
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        localStorage.clear();
+      }
+    }
+    setLoading(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setCurrentView('login');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <Rocket className="text-red-600 animate-bounce mx-auto mb-4" size={48} />
+          <p className="text-gray-600">Loading startup.hub...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
-      <header className="border-b-4 border-red-600 bg-white sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-red-600 rounded flex items-center justify-center">
-                <Rocket className="text-white" size={24} />
+      {isAuthenticated && (
+        <header className="border-b-4 border-red-600 bg-white sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-red-600 rounded flex items-center justify-center">
+                  <Rocket className="text-white" size={24} />
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">startup.hub</h1>
               </div>
-              <h1 className="text-2xl font-bold text-gray-900">startup.hub</h1>
-            </div>
-            
-            {currentUser && (
-              <nav className="flex gap-4">
+              
+              <nav className="flex items-center gap-4">
                 <button
                   onClick={() => setCurrentView('home')}
                   className={`px-4 py-2 font-medium ${currentView === 'home' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
@@ -108,19 +182,19 @@ function App() {
                   onClick={() => setCurrentView('roulette')}
                   className={`px-4 py-2 font-medium ${currentView === 'roulette' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
                 >
-                  Founder Roulette
+                  Roulette
                 </button>
                 <button
                   onClick={() => setCurrentView('ideas')}
                   className={`px-4 py-2 font-medium ${currentView === 'ideas' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
                 >
-                  Idea Rooms
+                  Ideas
                 </button>
                 <button
                   onClick={() => setCurrentView('matchmaking')}
                   className={`px-4 py-2 font-medium ${currentView === 'matchmaking' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
                 >
-                  Find Co-Founder
+                  Matchmaking
                 </button>
                 <button
                   onClick={() => setCurrentView('coworking')}
@@ -128,18 +202,45 @@ function App() {
                 >
                   Co-Working
                 </button>
+                <div className="flex items-center gap-2 ml-4 pl-4 border-l-2 border-gray-300">
+                  <User className="text-gray-600" size={20} />
+                  <span className="text-sm text-gray-600">{currentUser?.name}</span>
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded"
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </div>
               </nav>
-            )}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {!currentUser && showOnboarding ? (
-          <OnboardingFlow onComplete={(user) => {
-            setCurrentUser(user);
-            setShowOnboarding(false);
-          }} />
+        {currentView === 'login' ? (
+          <LoginView 
+            onLogin={(user) => {
+              setCurrentUser(user);
+              setIsAuthenticated(true);
+              setCurrentView('home');
+            }}
+            onSwitchToSignup={() => setCurrentView('signup')}
+          />
+        ) : currentView === 'signup' ? (
+          <SignupView 
+            onSignup={() => setCurrentView('onboarding')}
+            onSwitchToLogin={() => setCurrentView('login')}
+          />
+        ) : currentView === 'onboarding' ? (
+          <OnboardingFlow 
+            onComplete={(user) => {
+              setCurrentUser(user);
+              setIsAuthenticated(true);
+              setCurrentView('home');
+            }} 
+          />
         ) : currentView === 'home' ? (
           <HomeView currentUser={currentUser} setCurrentView={setCurrentView} />
         ) : currentView === 'roulette' ? (
@@ -156,6 +257,221 @@ function App() {
   );
 }
 
+function LoginView({ onLogin, onSwitchToSignup }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      await API.login(email, password);
+      const profile = await API.getCurrentProfile();
+      onLogin(profile);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto mt-20">
+      <div className="border-4 border-red-600 rounded-lg p-8 bg-white">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Rocket className="text-white" size={32} />
+          </div>
+          <h2 className="text-3xl font-bold mb-2">Welcome to startup.hub</h2>
+          <p className="text-gray-600">Login to connect with founders</p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border-2 border-red-600 rounded text-red-600 text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              placeholder="your@email.com"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
+          >
+            {loading ? 'Logging in...' : 'Login'}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-gray-600">
+            Don't have an account?{' '}
+            <button
+              onClick={onSwitchToSignup}
+              className="text-red-600 font-medium hover:underline"
+            >
+              Sign up
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignupView({ onSignup, onSwitchToLogin }) {
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await API.signup(email, username, password);
+      await API.login(email, password);
+      onSignup();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto mt-20">
+      <div className="border-4 border-red-600 rounded-lg p-8 bg-white">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Rocket className="text-white" size={32} />
+          </div>
+          <h2 className="text-3xl font-bold mb-2">Join startup.hub</h2>
+          <p className="text-gray-600">Create your founder account</p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border-2 border-red-600 rounded text-red-600 text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSignup} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              placeholder="your@email.com"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              placeholder="username"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Confirm Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
+          >
+            {loading ? 'Creating account...' : 'Sign Up'}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-gray-600">
+            Already have an account?{' '}
+            <button
+              onClick={onSwitchToLogin}
+              className="text-red-600 font-medium hover:underline"
+            >
+              Login
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OnboardingFlow({ onComplete }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -165,15 +481,17 @@ function OnboardingFlow({ onComplete }) {
     stage: '',
     industry: '',
     skills: [],
-    lookingFor: '',
-    personality: [],
-    currentGoal: ''
+    looking_for: '',
+    personality_tags: [],
+    current_goal: ''
   });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const stages = ["Idea", "MVP", "Launched", "Scaling"];
+  const stages = ["idea", "mvp", "launched", "scaling"];
   const industries = ["FinTech", "EdTech", "AI", "E-commerce", "SaaS", "HealthTech", "Other"];
   const skillOptions = ["Tech", "Marketing", "Ops", "Design", "Sales"];
-  const lookingForOptions = ["Co-founder", "Feedback", "Users", "Just networking"];
+  const lookingForOptions = ["cofounder", "feedback", "users", "networking"];
   const personalityOptions = [
     "🚀 Fast executor",
     "🧠 Deep thinker",
@@ -183,15 +501,30 @@ function OnboardingFlow({ onComplete }) {
   ];
 
   const handleSubmit = async () => {
-    const user = await API.createProfile(formData);
-    onComplete(user);
+    setError('');
+    setLoading(true);
+
+    try {
+      const user = await API.createProfile(formData);
+      onComplete(user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="max-w-2xl mx-auto">
       <div className="border-4 border-red-600 rounded-lg p-8 bg-white">
-        <h2 className="text-3xl font-bold mb-2">Welcome to startup.hub</h2>
-        <p className="text-gray-600 mb-8">Let's set up your founder profile</p>
+        <h2 className="text-3xl font-bold mb-2">Build Your Founder Profile</h2>
+        <p className="text-gray-600 mb-8">Let's get you connected with the right founders</p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border-2 border-red-600 rounded text-red-600 text-sm">
+            {error}
+          </div>
+        )}
 
         <div className="mb-8">
           <div className="flex gap-2">
@@ -248,8 +581,9 @@ function OnboardingFlow({ onComplete }) {
                 {stages.map(stage => (
                   <button
                     key={stage}
+                    type="button"
                     onClick={() => setFormData({...formData, stage})}
-                    className={`px-4 py-3 border-2 rounded font-medium ${
+                    className={`px-4 py-3 border-2 rounded font-medium capitalize ${
                       formData.stage === stage
                         ? 'border-red-600 bg-red-50 text-red-600'
                         : 'border-gray-300 hover:border-red-600'
@@ -287,6 +621,7 @@ function OnboardingFlow({ onComplete }) {
                 {skillOptions.map(skill => (
                   <button
                     key={skill}
+                    type="button"
                     onClick={() => {
                       const newSkills = formData.skills.includes(skill)
                         ? formData.skills.filter(s => s !== skill)
@@ -311,9 +646,10 @@ function OnboardingFlow({ onComplete }) {
                 {lookingForOptions.map(option => (
                   <button
                     key={option}
-                    onClick={() => setFormData({...formData, lookingFor: option})}
-                    className={`px-4 py-3 border-2 rounded font-medium ${
-                      formData.lookingFor === option
+                    type="button"
+                    onClick={() => setFormData({...formData, looking_for: option})}
+                    className={`px-4 py-3 border-2 rounded font-medium capitalize ${
+                      formData.looking_for === option
                         ? 'border-red-600 bg-red-50 text-red-600'
                         : 'border-gray-300 hover:border-red-600'
                     }`}
@@ -330,16 +666,17 @@ function OnboardingFlow({ onComplete }) {
                 {personalityOptions.map(option => (
                   <button
                     key={option}
+                    type="button"
                     onClick={() => {
-                      const newPersonality = formData.personality.includes(option)
-                        ? formData.personality.filter(p => p !== option)
-                        : formData.personality.length < 3
-                        ? [...formData.personality, option]
-                        : formData.personality;
-                      setFormData({...formData, personality: newPersonality});
+                      const newPersonality = formData.personality_tags.includes(option)
+                        ? formData.personality_tags.filter(p => p !== option)
+                        : formData.personality_tags.length < 3
+                        ? [...formData.personality_tags, option]
+                        : formData.personality_tags;
+                      setFormData({...formData, personality_tags: newPersonality});
                     }}
                     className={`w-full px-4 py-3 border-2 rounded font-medium text-left ${
-                      formData.personality.includes(option)
+                      formData.personality_tags.includes(option)
                         ? 'border-red-600 bg-red-50 text-red-600'
                         : 'border-gray-300 hover:border-red-600'
                     }`}
@@ -361,8 +698,8 @@ function OnboardingFlow({ onComplete }) {
                 What are you building right now? What do you need?
               </label>
               <textarea
-                value={formData.currentGoal}
-                onChange={(e) => setFormData({...formData, currentGoal: e.target.value})}
+                value={formData.current_goal}
+                onChange={(e) => setFormData({...formData, current_goal: e.target.value})}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
                 rows="4"
                 placeholder="e.g., Building an AI bookkeeping tool for small businesses — looking for a marketing co-founder."
@@ -390,9 +727,10 @@ function OnboardingFlow({ onComplete }) {
           ) : (
             <button
               onClick={handleSubmit}
-              className="flex-1 px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700"
+              disabled={loading}
+              className="flex-1 px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
             >
-              Complete Profile
+              {loading ? 'Creating Profile...' : 'Complete Profile'}
             </button>
           )}
         </div>
@@ -454,7 +792,7 @@ function HomeView({ currentUser, setCurrentView }) {
 
       <div className="border-2 border-red-600 rounded-lg p-6 bg-white">
         <h3 className="text-lg font-bold mb-2">Your Current Goal</h3>
-        <p className="text-gray-700">{currentUser?.currentGoal}</p>
+        <p className="text-gray-700">{currentUser?.current_goal}</p>
       </div>
     </div>
   );
@@ -486,18 +824,23 @@ function ActionCard({ icon, title, description, highlight, badge, onClick }) {
 function FounderRouletteView({ currentUser }) {
   const [matching, setMatching] = useState(false);
   const [matched, setMatched] = useState(null);
-  const [inCall, setInCall] = useState(false);
+  const [error, setError] = useState('');
 
   const startMatching = async () => {
     setMatching(true);
-    const founder = await API.matchRandomFounder(currentUser);
-    setMatched(founder);
-    setMatching(false);
-    setInCall(true);
+    setError('');
+    
+    try {
+      const result = await API.matchRandomFounder();
+      setMatched(result.matched_founder);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMatching(false);
+    }
   };
 
   const nextFounder = () => {
-    setInCall(false);
     setMatched(null);
     startMatching();
   };
@@ -509,6 +852,12 @@ function FounderRouletteView({ currentUser }) {
         <p className="text-gray-600 mb-8">
           Connect with random founders for 5-10 min conversations. Build serendipity.
         </p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border-2 border-red-600 rounded text-red-600 text-sm">
+            {error}
+          </div>
+        )}
 
         {!matched && !matching && (
           <div className="text-center py-12">
@@ -548,7 +897,7 @@ function FounderRouletteView({ currentUser }) {
                   <h3 className="text-2xl font-bold">{matched.name}</h3>
                   <p className="text-gray-600">{matched.country} • {matched.timezone}</p>
                 </div>
-                <span className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium">
+                <span className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
                   {matched.stage}
                 </span>
               </div>
@@ -563,7 +912,7 @@ function FounderRouletteView({ currentUser }) {
                 <div>
                   <span className="font-medium">Personality:</span>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {matched.personality.map((p, i) => (
+                    {matched.personality_tags?.map((p, i) => (
                       <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm">
                         {p}
                       </span>
@@ -572,7 +921,7 @@ function FounderRouletteView({ currentUser }) {
                 </div>
                 <div className="pt-3 border-t-2 border-gray-200">
                   <span className="font-medium">Current Goal:</span>
-                  <p className="text-gray-700 mt-1">{matched.currentGoal}</p>
+                  <p className="text-gray-700 mt-1">{matched.current_goal}</p>
                 </div>
               </div>
             </div>
@@ -601,24 +950,42 @@ function FounderRouletteView({ currentUser }) {
 }
 
 function IdeaRoomsView({ currentUser }) {
-  const [ideas, setIdeas] = useState(mockIdeas);
+  const [ideas, setIdeas] = useState([]);
   const [showNewIdea, setShowNewIdea] = useState(false);
   const [newIdea, setNewIdea] = useState({
     problem: '',
     solution: '',
     stage: '',
-    needHelp: ''
+    need_help: ''
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadIdeas();
+  }, []);
+
+  const loadIdeas = async () => {
+    try {
+      const data = await API.getIdeas();
+      setIdeas(data);
+    } catch (err) {
+      setError('Failed to load ideas');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const submitIdea = async () => {
-    const idea = await API.createIdea({
-      ...newIdea,
-      author: currentUser.name,
-      timestamp: 'Just now'
-    });
-    setIdeas([idea, ...ideas]);
-    setShowNewIdea(false);
-    setNewIdea({ problem: '', solution: '', stage: '', needHelp: '' });
+    setError('');
+    try {
+      const idea = await API.createIdea(newIdea);
+      setIdeas([idea, ...ideas]);
+      setShowNewIdea(false);
+      setNewIdea({ problem: '', solution: '', stage: '', need_help: '' });
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   return (
@@ -635,6 +1002,12 @@ function IdeaRoomsView({ currentUser }) {
           Post New Idea
         </button>
       </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 border-2 border-red-600 rounded text-red-600 text-sm">
+          {error}
+        </div>
+      )}
 
       {showNewIdea && (
         <div className="border-4 border-red-600 rounded-lg p-6 bg-white">
@@ -674,8 +1047,8 @@ function IdeaRoomsView({ currentUser }) {
               <label className="block text-sm font-medium mb-2">What I Need</label>
               <input
                 type="text"
-                value={newIdea.needHelp}
-                onChange={(e) => setNewIdea({...newIdea, needHelp: e.target.value})}
+                value={newIdea.need_help}
+                onChange={(e) => setNewIdea({...newIdea, need_help: e.target.value})}
                 className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
                 placeholder="e.g., Brutal feedback, Technical co-founder"
               />
@@ -698,59 +1071,93 @@ function IdeaRoomsView({ currentUser }) {
         </div>
       )}
 
-      {ideas.map(idea => (
-        <div key={idea.id} className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="font-bold text-lg">{idea.author}</h3>
-              <p className="text-sm text-gray-500">{idea.timestamp}</p>
-            </div>
-            <span className="px-3 py-1 bg-gray-100 rounded-full text-sm font-medium">
-              {idea.stage}
-            </span>
-          </div>
-          
-          <div className="space-y-3 mb-4">
-            <div>
-              <span className="font-medium text-red-600">Problem:</span>
-              <p className="text-gray-700 mt-1">{idea.problem}</p>
-            </div>
-            <div>
-              <span className="font-medium text-red-600">Solution:</span>
-              <p className="text-gray-700 mt-1">{idea.solution}</p>
-            </div>
-            <div>
-              <span className="font-medium text-red-600">Need Help With:</span>
-              <p className="text-gray-700 mt-1">{idea.needHelp}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 pt-4 border-t-2 border-gray-200">
-            <button className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium">
-              <Heart size={18} />
-              <span>{idea.upvotes} Upvotes</span>
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium">
-              <MessageSquare size={18} />
-              <span>{idea.comments} Comments</span>
-            </button>
-            <button className="ml-auto px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700">
-              Offer to Collaborate
-            </button>
-          </div>
+      {loading ? (
+        <div className="text-center py-12">
+          <RefreshCw className="mx-auto mb-4 text-red-600 animate-spin" size={48} />
+          <p className="text-gray-600">Loading ideas...</p>
         </div>
-      ))}
+      ) : ideas.length === 0 ? (
+        <div className="text-center py-12 border-2 border-gray-300 rounded-lg">
+          <MessageSquare className="mx-auto mb-4 text-gray-400" size={48} />
+          <p className="text-gray-600">No ideas yet. Be the first to post!</p>
+        </div>
+      ) : (
+        ideas.map(idea => (
+          <div key={idea.id} className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-lg">{idea.author_name}</h3>
+                <p className="text-sm text-gray-500">{new Date(idea.created_at).toLocaleDateString()}</p>
+              </div>
+              <span className="px-3 py-1 bg-gray-100 rounded-full text-sm font-medium">
+                {idea.stage}
+              </span>
+            </div>
+            
+            <div className="space-y-3 mb-4">
+              <div>
+                <span className="font-medium text-red-600">Problem:</span>
+                <p className="text-gray-700 mt-1">{idea.problem}</p>
+              </div>
+              <div>
+                <span className="font-medium text-red-600">Solution:</span>
+                <p className="text-gray-700 mt-1">{idea.solution}</p>
+              </div>
+              <div>
+                <span className="font-medium text-red-600">Need Help With:</span>
+                <p className="text-gray-700 mt-1">{idea.need_help}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 pt-4 border-t-2 border-gray-200">
+              <button className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium">
+                <Heart size={18} />
+                <span>{idea.upvotes} Upvotes</span>
+              </button>
+              <button className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium">
+                <MessageSquare size={18} />
+                <span>{idea.comment_count || 0} Comments</span>
+              </button>
+              <button className="ml-auto px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700">
+                Offer to Collaborate
+              </button>
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
 
 function CoFounderMatchView({ currentUser }) {
-  const [founders, setFounders] = useState(mockFounders);
+  const [founders, setFounders] = useState([]);
   const [filters, setFilters] = useState({
-    lookingFor: 'all',
+    looking_for: 'all',
     stage: 'all',
     industry: 'all'
   });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadFounders();
+  }, [filters]);
+
+  const loadFounders = async () => {
+    setLoading(true);
+    try {
+      const filterParams = {};
+      if (filters.stage !== 'all') filterParams.stage = filters.stage;
+      if (filters.industry !== 'all') filterParams.industry = filters.industry;
+      if (filters.looking_for !== 'all') filterParams.looking_for = filters.looking_for;
+      
+      const data = await API.getFounders(filterParams);
+      setFounders(data);
+    } catch (err) {
+      console.error('Failed to load founders:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -765,14 +1172,15 @@ function CoFounderMatchView({ currentUser }) {
           <div>
             <label className="block text-sm font-medium mb-2">Looking For</label>
             <select
-              value={filters.lookingFor}
-              onChange={(e) => setFilters({...filters, lookingFor: e.target.value})}
+              value={filters.looking_for}
+              onChange={(e) => setFilters({...filters, looking_for: e.target.value})}
               className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
             >
               <option value="all">All</option>
-              <option value="Co-founder">Co-founder</option>
-              <option value="Feedback">Feedback</option>
-              <option value="Users">Users</option>
+              <option value="cofounder">Co-founder</option>
+              <option value="feedback">Feedback</option>
+              <option value="users">Users</option>
+              <option value="networking">Networking</option>
             </select>
           </div>
           <div>
@@ -783,10 +1191,10 @@ function CoFounderMatchView({ currentUser }) {
               className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
             >
               <option value="all">All Stages</option>
-              <option value="Idea">Idea</option>
-              <option value="MVP">MVP</option>
-              <option value="Launched">Launched</option>
-              <option value="Scaling">Scaling</option>
+              <option value="idea">Idea</option>
+              <option value="mvp">MVP</option>
+              <option value="launched">Launched</option>
+              <option value="scaling">Scaling</option>
             </select>
           </div>
           <div>
@@ -801,87 +1209,108 @@ function CoFounderMatchView({ currentUser }) {
               <option value="AI">AI</option>
               <option value="EdTech">EdTech</option>
               <option value="E-commerce">E-commerce</option>
+              <option value="SaaS">SaaS</option>
             </select>
           </div>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {founders.map(founder => (
-          <div key={founder.id} className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-xl font-bold">{founder.name}</h3>
-                  {founder.online && (
-                    <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                  )}
+      {loading ? (
+        <div className="text-center py-12">
+          <RefreshCw className="mx-auto mb-4 text-red-600 animate-spin" size={48} />
+          <p className="text-gray-600">Loading founders...</p>
+        </div>
+      ) : founders.length === 0 ? (
+        <div className="text-center py-12 border-2 border-gray-300 rounded-lg">
+          <Users className="mx-auto mb-4 text-gray-400" size={48} />
+          <p className="text-gray-600">No founders found. Try adjusting your filters.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          {founders.map(founder => (
+            <div key={founder.id} className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-xl font-bold">{founder.name}</h3>
+                    {founder.is_online && (
+                      <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                    )}
+                  </div>
+                  <p className="text-gray-600">{founder.country} • {founder.timezone}</p>
                 </div>
-                <p className="text-gray-600">{founder.country} • {founder.timezone}</p>
+                <span className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
+                  {founder.stage}
+                </span>
               </div>
-              <span className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium">
-                {founder.stage}
-              </span>
-            </div>
 
-            <div className="space-y-3 mb-4">
-              <div>
-                <span className="font-medium">Industry:</span> {founder.industry}
-              </div>
-              <div>
-                <span className="font-medium">Skills:</span>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {founder.skills.map((skill, i) => (
-                    <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm font-medium">
-                      {skill}
-                    </span>
-                  ))}
+              <div className="space-y-3 mb-4">
+                <div>
+                  <span className="font-medium">Industry:</span> {founder.industry}
+                </div>
+                <div>
+                  <span className="font-medium">Skills:</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {founder.skills?.map((skill, i) => (
+                      <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm font-medium">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <span className="font-medium">Looking For:</span> <span className="capitalize">{founder.looking_for}</span>
+                </div>
+                <div>
+                  <span className="font-medium">Personality:</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {founder.personality_tags?.map((p, i) => (
+                      <span key={i} className="text-sm">{p}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="pt-3 border-t-2 border-gray-200">
+                  <span className="font-medium">Goal:</span>
+                  <p className="text-gray-700 mt-1 text-sm">{founder.current_goal}</p>
                 </div>
               </div>
-              <div>
-                <span className="font-medium">Looking For:</span> {founder.lookingFor}
-              </div>
-              <div>
-                <span className="font-medium">Personality:</span>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {founder.personality.map((p, i) => (
-                    <span key={i} className="text-sm">{p}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="pt-3 border-t-2 border-gray-200">
-                <span className="font-medium">Goal:</span>
-                <p className="text-gray-700 mt-1 text-sm">{founder.currentGoal}</p>
-              </div>
-            </div>
 
-            <div className="flex gap-3">
-              <button className="flex-1 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700">
-                Interested to Build Together
-              </button>
-              <button className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50">
-                View Profile
-              </button>
+              <div className="flex gap-3">
+                <button className="flex-1 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700">
+                  Connect
+                </button>
+                <button className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50">
+                  View
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function CoWorkingView({ currentUser }) {
-  const rooms = [
-    { id: 1, name: "💻 Indie Hackers Room", members: 12, active: true },
-    { id: 2, name: "💰 Fundraising Room", members: 8, active: true },
-    { id: 3, name: "🤖 AI Builders Room", members: 24, active: true },
-    { id: 4, name: "🌍 First-time Founders Room", members: 15, active: true },
-    { id: 5, name: "🚀 Growth & Marketing", members: 9, active: false },
-    { id: 6, name: "📱 Mobile App Founders", members: 6, active: false }
-  ];
-
+  const [rooms, setRooms] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadRooms();
+  }, []);
+
+  const loadRooms = async () => {
+    try {
+      const data = await API.getRooms();
+      setRooms(data);
+    } catch (err) {
+      console.error('Failed to load rooms:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -890,7 +1319,12 @@ function CoWorkingView({ currentUser }) {
         <p className="text-gray-600 mt-1">Drop in, work silently, or chat with fellow founders</p>
       </div>
 
-      {!selectedRoom ? (
+      {loading ? (
+        <div className="text-center py-12">
+          <RefreshCw className="mx-auto mb-4 text-red-600 animate-spin" size={48} />
+          <p className="text-gray-600">Loading rooms...</p>
+        </div>
+      ) : !selectedRoom ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {rooms.map(room => (
             <button
@@ -899,14 +1333,15 @@ function CoWorkingView({ currentUser }) {
               className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition text-left"
             >
               <div className="flex items-start justify-between mb-4">
-                <h3 className="text-lg font-bold">{room.name}</h3>
-                {room.active && (
+                <h3 className="text-lg font-bold">{room.emoji} {room.name}</h3>
+                {room.is_active && (
                   <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
                 )}
               </div>
+              <p className="text-sm text-gray-600 mb-3">{room.description}</p>
               <div className="flex items-center gap-2 text-gray-600">
                 <Users size={18} />
-                <span>{room.members} founders inside</span>
+                <span>{room.member_count || 0} founders inside</span>
               </div>
             </button>
           ))}
@@ -914,7 +1349,7 @@ function CoWorkingView({ currentUser }) {
       ) : (
         <div className="border-4 border-red-600 rounded-lg p-6 bg-white">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-bold">{selectedRoom.name}</h3>
+            <h3 className="text-2xl font-bold">{selectedRoom.emoji} {selectedRoom.name}</h3>
             <button
               onClick={() => setSelectedRoom(null)}
               className="px-4 py-2 border-2 border-gray-300 rounded font-medium hover:border-red-600"
@@ -923,63 +1358,24 @@ function CoWorkingView({ currentUser }) {
             </button>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4 mb-6">
-            <div className="border-2 border-gray-300 rounded-lg p-4">
-              <div className="font-bold mb-2">{selectedRoom.members} Members</div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm">You</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm">Alex K.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm">Sarah M.</span>
-                </div>
-                <div className="text-sm text-gray-500">+{selectedRoom.members - 3} more</div>
+          <div className="border-2 border-gray-300 rounded-lg p-4 mb-4">
+            <div className="font-bold mb-4">Room Chat</div>
+            <div className="space-y-3 mb-4 h-48 overflow-y-auto">
+              <div className="text-sm text-gray-500 text-center">
+                Welcome to {selectedRoom.name}! Start chatting with fellow founders.
               </div>
             </div>
-
-            <div className="md:col-span-2 border-2 border-gray-300 rounded-lg p-4">
-              <div className="font-bold mb-4">Room Chat</div>
-              <div className="space-y-3 mb-4 h-48 overflow-y-auto">
-                <div className="text-sm">
-                  <span className="font-medium">Alex K.:</span> Just launched v2 of my landing page!
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium">Sarah M.:</span> Congrats! Would love feedback on my pricing model
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium">You:</span> Hey everyone! 👋
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-                />
-                <button className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
-                  <Send size={20} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-2 border-gray-300 rounded-lg p-4">
-            <div className="font-bold mb-2">Quick Help Board</div>
-            <div className="space-y-2 text-sm">
-              <div className="p-2 bg-gray-50 rounded">
-                <span className="font-medium">Alex K.:</span> Anyone know a good analytics tool for SaaS?
-              </div>
-              <div className="p-2 bg-gray-50 rounded">
-                <span className="font-medium">Sarah M.:</span> Looking for feedback on pricing: $29 vs $49/mo?
-              </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              />
+              <button className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                <Send size={20} />
+              </button>
             </div>
           </div>
         </div>

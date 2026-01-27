@@ -6,32 +6,57 @@ const API_BASE_URL = 'http://localhost:8000';
 
 const API = {
   async login(email, password) {
-    const response = await fetch(`${API_BASE_URL}/api/token/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    if (response.ok) {
-      const data = await response.json();
-      localStorage.setItem('access_token', data.access);
-      localStorage.setItem('refresh_token', data.refresh);
-      return data;
+    console.log('🔐 Login attempt:', { email, url: `${API_BASE_URL}/api/token/` });
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/token/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      console.log('📡 Login response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Login successful');
+        localStorage.setItem('access_token', data.access);
+        localStorage.setItem('refresh_token', data.refresh);
+        return data;
+      }
+      
+      const error = await response.json();
+      console.error('❌ Login failed:', error);
+      throw new Error(error.detail || 'Login failed');
+    } catch (err) {
+      console.error('❌ Login error:', err.message);
+      throw err;
     }
-    const error = await response.json();
-    throw new Error(error.detail || 'Login failed');
   },
 
   async signup(email, username, password) {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, username, password }),
-    });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Signup failed');
+    console.log('📝 Signup attempt:', { email, username, url: `${API_BASE_URL}/api/auth/register/` });
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username, password }),
+      });
+      
+      console.log('📡 Signup response status:', response.status);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('❌ Signup failed:', error);
+        throw new Error(error.error || 'Signup failed');
+      }
+      
+      const data = await response.json();
+      console.log('✅ Signup successful:', data);
+      return data;
+    } catch (err) {
+      console.error('❌ Signup error:', err.message);
+      throw err;
     }
-    return response.json();
   },
 
   async createProfile(data) {

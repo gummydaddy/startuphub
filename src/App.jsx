@@ -125,6 +125,58 @@ const API = {
     return response.json();
   },
 
+  async upvoteIdea(ideaId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/ideas/${ideaId}/upvote/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to upvote');
+    return response.json();
+  },
+
+  async commentOnIdea(ideaId, content) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/ideas/${ideaId}/comment/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error('Failed to comment');
+    return response.json();
+  },
+
+  async collaborateOnIdea(ideaId, message) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/ideas/${ideaId}/collaborate/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ message }),
+    });
+    if (!response.ok) throw new Error('Failed to request collaboration');
+    return response.json();
+  },
+
+  async updateProfile(profileData) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/founders/update_profile/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(profileData),
+    });
+    if (!response.ok) throw new Error('Failed to update profile');
+    return response.json();
+  },
+
   async getRooms() {
     const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/api/rooms/`, {
@@ -1133,15 +1185,51 @@ function IdeaRoomsView({ currentUser }) {
             </div>
 
             <div className="flex items-center gap-4 pt-4 border-t-2 border-gray-200">
-              <button className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium">
+              <button 
+                onClick={async () => {
+                  try {
+                    const result = await API.upvoteIdea(idea.id);
+                    const updatedIdeas = ideas.map(i => 
+                      i.id === idea.id ? { ...i, upvotes: result.upvotes } : i
+                    );
+                    setIdeas(updatedIdeas);
+                  } catch (err) {
+                    alert(err.message);
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium"
+              >
                 <Heart size={18} />
                 <span>{idea.upvotes} Upvotes</span>
               </button>
-              <button className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium">
+              <button 
+                onClick={() => {
+                  const comment = prompt('Enter your comment:');
+                  if (comment) {
+                    API.commentOnIdea(idea.id, comment)
+                      .then(() => {
+                        alert('Comment added!');
+                        loadIdeas(); // Reload to show new comment count
+                      })
+                      .catch(err => alert(err.message));
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium"
+              >
                 <MessageSquare size={18} />
                 <span>{idea.comment_count || 0} Comments</span>
               </button>
-              <button className="ml-auto px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700">
+              <button 
+                onClick={() => {
+                  const message = prompt('Why do you want to collaborate?');
+                  if (message) {
+                    API.collaborateOnIdea(idea.id, message)
+                      .then(() => alert('Collaboration request sent!'))
+                      .catch(err => alert(err.message));
+                  }
+                }}
+                className="ml-auto px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700"
+              >
                 Offer to Collaborate
               </button>
             </div>

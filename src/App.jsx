@@ -75,9 +75,46 @@ const API = {
 
   async getCurrentProfile() {
     const token = localStorage.getItem('access_token');
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
     const response = await fetch(`${API_BASE_URL}/api/founders/me/`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     });
+    if (response.status === 401) {
+      // Token expired, try to refresh
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        try {
+          const refreshResponse = await fetch(`${API_BASE_URL}/api/token/refresh/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: refreshToken }),
+          });
+          if (refreshResponse.ok) {
+            const data = await refreshResponse.json();
+            localStorage.setItem('access_token', data.access);
+            // Retry with new token
+            const retryResponse = await fetch(`${API_BASE_URL}/api/founders/me/`, {
+              headers: { 
+                'Authorization': `Bearer ${data.access}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            if (retryResponse.ok) return retryResponse.json();
+          }
+        } catch (err) {
+          console.error('Token refresh failed:', err);
+        }
+      }
+      // If refresh failed, clear tokens
+      localStorage.clear();
+      window.location.reload();
+      return null;
+    }
     if (!response.ok) return null;
     return response.json();
   },
@@ -204,6 +241,42 @@ const API = {
     return response.json();
   },
 
+  async sendConnectionRequest(toFounderId, message = '') {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/connections/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ 
+        to_founder: toFounderId,
+        message: message 
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to send connection request');
+    return response.json();
+  },
+
+  async getMyConnections() {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/connections/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
+  async acceptConnection(connectionId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/connections/${connectionId}/accept/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to accept connection');
+    return response.json();
+  },
+
   async updateProfile(profileData) {
     const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/api/founders/update_profile/`, {
@@ -234,9 +307,11 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewingProfile, setViewingProfile] = useState(null);
+  const [connectionRequests, setConnectionRequests] = useState([]);
 
   useEffect(() => {
     checkAuth();
+    loadConnections();
   }, []);
 
   const checkAuth = async () => {
@@ -255,6 +330,15 @@ function App() {
       }
     }
     setLoading(false);
+  };
+
+  const loadConnections = async () => {
+    try {
+      const connections = await API.getMyConnections();
+      setConnectionRequests(connections);
+    } catch (err) {
+      console.error('Failed to load connections:', err);
+    }
   };
 
   const handleLogout = () => {
@@ -328,6 +412,17 @@ function App() {
                 >
                   Profile
                 </button>
+                <button
+                  onClick={() => setCurrentView('connections')}
+                  className={`px-4 py-2 font-medium relative ${currentView === 'connections' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
+                >
+                  Connections
+                  {connectionRequests.filter(c => c.status === 'pending' && c.to_founder === currentUser?.id).length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-xs rounded-full flex items-center justify-center">
+                      {connectionRequests.filter(c => c.status === 'pending' && c.to_founder === currentUser?.id).length}
+                    </span>
+                  )}
+                </button>
                 <div className="flex items-center gap-2 ml-4 pl-4 border-l-2 border-gray-300">
                   <User className="text-gray-600" size={20} />
                   <span className="text-sm text-gray-600">{currentUser?.name}</span>
@@ -386,6 +481,12 @@ function App() {
               setViewingProfile(updated);
             }}
             onBack={() => setCurrentView('home')}
+          />
+        ) : currentView === 'connections' ? (
+          <ConnectionsView 
+            currentUser={currentUser}
+            connections={connectionRequests}
+            onRefresh={loadConnections}
           />
         ) : null}
       </main>
@@ -961,6 +1062,7 @@ function FounderRouletteView({ currentUser }) {
   const [matching, setMatching] = useState(false);
   const [matched, setMatched] = useState(null);
   const [error, setError] = useState('');
+  const [sessionId, setSessionId] = useState(null);
 
   const startMatching = async () => {
     setMatching(true);
@@ -968,9 +1070,12 @@ function FounderRouletteView({ currentUser }) {
     
     try {
       const result = await API.matchRandomFounder();
+      console.log('Match result:', result);
       setMatched(result.matched_founder);
+      setSessionId(result.session_id);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Failed to find a match. Please try again.');
+      console.error('Matching error:', err);
     } finally {
       setMatching(false);
     }
@@ -1401,11 +1506,19 @@ function CoFounderMatchView({ currentUser }) {
   const viewProfile = async (founderId) => {
     try {
       const profile = await API.getFounderProfile(founderId);
-      // Navigate to profile view
       window.scrollTo(0, 0);
       alert(`Viewing ${profile.name}'s profile`);
     } catch (err) {
       alert('Failed to load profile');
+    }
+  };
+
+  const sendConnection = async (founder) => {
+    try {
+      await API.sendConnectionRequest(founder.id, `Hi ${founder.name}, I'd like to connect!`);
+      alert(`Connection request sent to ${founder.name}! Check the Connections tab to see your requests.`);
+    } catch (err) {
+      alert(err.message || 'Failed to send connection request');
     }
   };
 
@@ -1527,7 +1640,7 @@ function CoFounderMatchView({ currentUser }) {
 
               <div className="flex gap-3">
                 <button 
-                  onClick={() => alert('Connection request sent to ' + founder.name)}
+                  onClick={() => sendConnection(founder)}
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700"
                 >
                   Connect
@@ -1588,14 +1701,17 @@ function CoWorkingView({ currentUser }) {
   };
 
   const sendMessage = async () => {
-    if (!message.trim()) return;
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
     
     try {
-      await API.sendRoomMessage(selectedRoom.id, message);
+      console.log('Sending message:', trimmedMessage, 'to room:', selectedRoom.id);
+      await API.sendRoomMessage(selectedRoom.id, trimmedMessage);
       setMessage('');
-      loadMessages(); // Reload messages
+      await loadMessages(); // Reload messages immediately
     } catch (err) {
-      alert(err.message);
+      console.error('Send message error:', err);
+      alert('Failed to send message: ' + err.message);
     }
   };
 
@@ -1666,6 +1782,143 @@ function CoWorkingView({ currentUser }) {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function ConnectionsView({ currentUser, connections, onRefresh }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleAccept = async (connectionId) => {
+    setLoading(true);
+    try {
+      await API.acceptConnection(connectionId);
+      alert('Connection accepted!');
+      onRefresh();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pendingReceived = connections.filter(c => 
+    c.status === 'pending' && c.to_founder === currentUser?.id
+  );
+  const pendingSent = connections.filter(c => 
+    c.status === 'pending' && c.from_founder === currentUser?.id
+  );
+  const accepted = connections.filter(c => c.status === 'accepted');
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div>
+        <h2 className="text-3xl font-bold mb-2">🤝 Connections</h2>
+        <p className="text-gray-600">Manage your founder network</p>
+      </div>
+
+      {/* Pending Requests (Received) */}
+      {pendingReceived.length > 0 && (
+        <div className="border-4 border-red-600 rounded-lg p-6 bg-white">
+          <h3 className="text-xl font-bold mb-4">
+            Pending Requests ({pendingReceived.length})
+          </h3>
+          <div className="space-y-4">
+            {pendingReceived.map(conn => (
+              <div key={conn.id} className="border-2 border-gray-300 rounded-lg p-4 flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold">{conn.from_founder_details?.name || 'Unknown Founder'}</h4>
+                  <p className="text-sm text-gray-600">{conn.from_founder_details?.industry}</p>
+                  {conn.message && (
+                    <p className="text-sm text-gray-700 mt-2 italic">"{conn.message}"</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(conn.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleAccept(conn.id)}
+                    disabled={loading}
+                    className="px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="px-4 py-2 border-2 border-gray-300 rounded font-medium hover:border-red-600"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sent Requests */}
+      {pendingSent.length > 0 && (
+        <div className="border-2 border-gray-300 rounded-lg p-6 bg-white">
+          <h3 className="text-xl font-bold mb-4">
+            Sent Requests ({pendingSent.length})
+          </h3>
+          <div className="space-y-4">
+            {pendingSent.map(conn => (
+              <div key={conn.id} className="border-2 border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold">{conn.to_founder_details?.name || 'Unknown Founder'}</h4>
+                    <p className="text-sm text-gray-600">{conn.to_founder_details?.industry}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Sent {new Date(conn.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">
+                    Pending
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Accepted Connections */}
+      {accepted.length > 0 ? (
+        <div className="border-2 border-gray-300 rounded-lg p-6 bg-white">
+          <h3 className="text-xl font-bold mb-4">
+            My Connections ({accepted.length})
+          </h3>
+          <div className="grid md:grid-cols-2 gap-4">
+            {accepted.map(conn => {
+              const otherFounder = conn.from_founder === currentUser?.id 
+                ? conn.to_founder_details 
+                : conn.from_founder_details;
+              
+              return (
+                <div key={conn.id} className="border-2 border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-bold">{otherFounder?.name || 'Unknown'}</h4>
+                    <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                  </div>
+                  <p className="text-sm text-gray-600">{otherFounder?.industry}</p>
+                  <p className="text-sm text-gray-700 mt-2">{otherFounder?.current_goal}</p>
+                  <button className="mt-3 px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50 text-sm">
+                    Message
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        !pendingReceived.length && !pendingSent.length && (
+          <div className="text-center py-12 border-2 border-gray-300 rounded-lg">
+            <Users className="mx-auto mb-4 text-gray-400" size={48} />
+            <p className="text-gray-600">No connections yet. Start connecting with founders!</p>
+          </div>
+        )
       )}
     </div>
   );

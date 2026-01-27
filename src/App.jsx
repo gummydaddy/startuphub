@@ -163,6 +163,47 @@ const API = {
     return response.json();
   },
 
+  async getIdeaComments(ideaId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/ideas/${ideaId}/comments/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
+  async sendRoomMessage(roomId, content) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/send_message/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error('Failed to send message');
+    return response.json();
+  },
+
+  async getRoomMessages(roomId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/messages/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
+  async getFounderProfile(founderId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/founders/${founderId}/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to load profile');
+    return response.json();
+  },
+
   async updateProfile(profileData) {
     const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/api/founders/update_profile/`, {
@@ -192,6 +233,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewingProfile, setViewingProfile] = useState(null);
 
   useEffect(() => {
     checkAuth();
@@ -277,6 +319,15 @@ function App() {
                 >
                   Co-Working
                 </button>
+                <button
+                  onClick={() => {
+                    setViewingProfile(currentUser);
+                    setCurrentView('profile');
+                  }}
+                  className={`px-4 py-2 font-medium ${currentView === 'profile' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
+                >
+                  Profile
+                </button>
                 <div className="flex items-center gap-2 ml-4 pl-4 border-l-2 border-gray-300">
                   <User className="text-gray-600" size={20} />
                   <span className="text-sm text-gray-600">{currentUser?.name}</span>
@@ -326,6 +377,16 @@ function App() {
           <CoFounderMatchView currentUser={currentUser} />
         ) : currentView === 'coworking' ? (
           <CoWorkingView currentUser={currentUser} />
+        ) : currentView === 'profile' ? (
+          <ProfileView 
+            profile={viewingProfile} 
+            currentUser={currentUser}
+            onUpdate={(updated) => {
+              setCurrentUser(updated);
+              setViewingProfile(updated);
+            }}
+            onBack={() => setCurrentView('home')}
+          />
         ) : null}
       </main>
     </div>
@@ -1027,6 +1088,8 @@ function FounderRouletteView({ currentUser }) {
 function IdeaRoomsView({ currentUser }) {
   const [ideas, setIdeas] = useState([]);
   const [showNewIdea, setShowNewIdea] = useState(false);
+  const [expandedIdea, setExpandedIdea] = useState(null);
+  const [ideaComments, setIdeaComments] = useState({});
   const [newIdea, setNewIdea] = useState({
     problem: '',
     solution: '',
@@ -1051,6 +1114,15 @@ function IdeaRoomsView({ currentUser }) {
     }
   };
 
+  const loadComments = async (ideaId) => {
+    try {
+      const comments = await API.getIdeaComments(ideaId);
+      setIdeaComments(prev => ({ ...prev, [ideaId]: comments }));
+    } catch (err) {
+      console.error('Failed to load comments:', err);
+    }
+  };
+
   const submitIdea = async () => {
     setError('');
     try {
@@ -1060,6 +1132,17 @@ function IdeaRoomsView({ currentUser }) {
       setNewIdea({ problem: '', solution: '', stage: '', need_help: '' });
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const toggleComments = async (ideaId) => {
+    if (expandedIdea === ideaId) {
+      setExpandedIdea(null);
+    } else {
+      setExpandedIdea(ideaId);
+      if (!ideaComments[ideaId]) {
+        await loadComments(ideaId);
+      }
     }
   };
 
@@ -1189,31 +1272,24 @@ function IdeaRoomsView({ currentUser }) {
                 onClick={async () => {
                   try {
                     const result = await API.upvoteIdea(idea.id);
-                    const updatedIdeas = ideas.map(i => 
-                      i.id === idea.id ? { ...i, upvotes: result.upvotes } : i
-                    );
-                    setIdeas(updatedIdeas);
+                    setIdeas(ideas.map(i => 
+                      i.id === idea.id ? { ...i, upvotes: result.upvotes, user_upvoted: result.status === 'upvoted' } : i
+                    ));
                   } catch (err) {
                     alert(err.message);
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium"
+                className={`flex items-center gap-2 px-4 py-2 border-2 rounded font-medium ${
+                  idea.user_upvoted 
+                    ? 'border-red-600 bg-red-50 text-red-600' 
+                    : 'border-gray-300 hover:border-red-600'
+                }`}
               >
-                <Heart size={18} />
+                <Heart size={18} className={idea.user_upvoted ? 'fill-red-600' : ''} />
                 <span>{idea.upvotes} Upvotes</span>
               </button>
               <button 
-                onClick={() => {
-                  const comment = prompt('Enter your comment:');
-                  if (comment) {
-                    API.commentOnIdea(idea.id, comment)
-                      .then(() => {
-                        alert('Comment added!');
-                        loadIdeas(); // Reload to show new comment count
-                      })
-                      .catch(err => alert(err.message));
-                  }
-                }}
+                onClick={() => toggleComments(idea.id)}
                 className="flex items-center gap-2 px-4 py-2 border-2 border-gray-300 rounded hover:border-red-600 font-medium"
               >
                 <MessageSquare size={18} />
@@ -1233,6 +1309,58 @@ function IdeaRoomsView({ currentUser }) {
                 Offer to Collaborate
               </button>
             </div>
+
+            {expandedIdea === idea.id && (
+              <div className="mt-4 pt-4 border-t-2 border-gray-200">
+                <h4 className="font-bold mb-3">Comments</h4>
+                
+                {/* Add Comment Form */}
+                <div className="mb-4">
+                  <textarea
+                    placeholder="Write a comment..."
+                    className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                    rows="2"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        const content = e.target.value.trim();
+                        if (content) {
+                          API.commentOnIdea(idea.id, content)
+                            .then(() => {
+                              e.target.value = '';
+                              loadComments(idea.id);
+                              setIdeas(ideas.map(i => 
+                                i.id === idea.id ? { ...i, comment_count: (i.comment_count || 0) + 1 } : i
+                              ));
+                            })
+                            .catch(err => alert(err.message));
+                        }
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Press Enter to post</p>
+                </div>
+
+                {/* Comments List */}
+                <div className="space-y-3">
+                  {ideaComments[idea.id]?.length > 0 ? (
+                    ideaComments[idea.id].map(comment => (
+                      <div key={comment.id} className="bg-gray-50 rounded p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-sm">{comment.author_name}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(comment.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{comment.content}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500">No comments yet. Be the first!</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         ))
       )}
@@ -1267,6 +1395,17 @@ function CoFounderMatchView({ currentUser }) {
       console.error('Failed to load founders:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const viewProfile = async (founderId) => {
+    try {
+      const profile = await API.getFounderProfile(founderId);
+      // Navigate to profile view
+      window.scrollTo(0, 0);
+      alert(`Viewing ${profile.name}'s profile`);
+    } catch (err) {
+      alert('Failed to load profile');
     }
   };
 
@@ -1387,10 +1526,16 @@ function CoFounderMatchView({ currentUser }) {
               </div>
 
               <div className="flex gap-3">
-                <button className="flex-1 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700">
+                <button 
+                  onClick={() => alert('Connection request sent to ' + founder.name)}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700"
+                >
                   Connect
                 </button>
-                <button className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50">
+                <button 
+                  onClick={() => viewProfile(founder.id)}
+                  className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50"
+                >
                   View
                 </button>
               </div>
@@ -1406,11 +1551,20 @@ function CoWorkingView({ currentUser }) {
   const [rooms, setRooms] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadRooms();
   }, []);
+
+  useEffect(() => {
+    if (selectedRoom) {
+      loadMessages();
+      const interval = setInterval(loadMessages, 5000); // Refresh every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [selectedRoom]);
 
   const loadRooms = async () => {
     try {
@@ -1420,6 +1574,28 @@ function CoWorkingView({ currentUser }) {
       console.error('Failed to load rooms:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMessages = async () => {
+    if (!selectedRoom) return;
+    try {
+      const data = await API.getRoomMessages(selectedRoom.id);
+      setMessages(data);
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!message.trim()) return;
+    
+    try {
+      await API.sendRoomMessage(selectedRoom.id, message);
+      setMessage('');
+      loadMessages(); // Reload messages
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -1491,6 +1667,171 @@ function CoWorkingView({ currentUser }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ProfileView({ profile, currentUser, onUpdate, onBack }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState(profile || {});
+  const [saving, setSaving] = useState(false);
+
+  const isOwnProfile = profile?.id === currentUser?.id;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updated = await API.updateProfile(editData);
+      onUpdate(updated);
+      setIsEditing(false);
+      alert('Profile updated successfully!');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-4">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 text-red-600 hover:bg-red-50 rounded font-medium"
+        >
+          ← Back
+        </button>
+      </div>
+
+      <div className="border-4 border-red-600 rounded-lg p-8 bg-white">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h2 className="text-3xl font-bold mb-2">{profile?.name}</h2>
+            <p className="text-gray-600">{profile?.country} • {profile?.timezone}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="px-4 py-2 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
+              {profile?.stage}
+            </span>
+            {isOwnProfile && (
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50"
+              >
+                {isEditing ? 'Cancel' : 'Edit Profile'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2">Name</label>
+              <input
+                type="text"
+                value={editData.name}
+                onChange={(e) => setEditData({...editData, name: e.target.value})}
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Country</label>
+                <input
+                  type="text"
+                  value={editData.country}
+                  onChange={(e) => setEditData({...editData, country: e.target.value})}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Timezone</label>
+                <input
+                  type="text"
+                  value={editData.timezone}
+                  onChange={(e) => setEditData({...editData, timezone: e.target.value})}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Industry</label>
+              <input
+                type="text"
+                value={editData.industry}
+                onChange={(e) => setEditData({...editData, industry: e.target.value})}
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Current Goal</label>
+              <textarea
+                value={editData.current_goal}
+                onChange={(e) => setEditData({...editData, current_goal: e.target.value})}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                rows="4"
+              />
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-bold text-lg mb-2">Industry</h3>
+              <p className="text-gray-700">{profile?.industry}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Skills</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile?.skills?.map((skill, i) => (
+                  <span key={i} className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Looking For</h3>
+              <p className="text-gray-700 capitalize">{profile?.looking_for}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Personality</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile?.personality_tags?.map((tag, i) => (
+                  <span key={i} className="px-3 py-1 bg-red-50 border-2 border-red-600 text-red-600 rounded text-sm font-medium">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Current Goal</h3>
+              <p className="text-gray-700">{profile?.current_goal}</p>
+            </div>
+
+            <div className="pt-4 border-t-2 border-gray-200">
+              <p className="text-sm text-gray-500">
+                Member since {new Date(profile?.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

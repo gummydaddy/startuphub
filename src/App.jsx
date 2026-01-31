@@ -258,6 +258,51 @@ const API = {
     return response.json();
   },
 
+  async sendDirectMessage(toFounderId, content) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/messages/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ 
+        to_founder: toFounderId,
+        content: content 
+      }),
+    });
+    if (!response.ok) throw new Error('Failed to send message');
+    return response.json();
+  },
+
+  async getMyMessages() {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/messages/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
+  async getConversation(founderId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/messages/conversation/${founderId}/`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
+  async joinRoom(roomId) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/rooms/${roomId}/join/`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to join room');
+    return response.json();
+  },
+
   async getMyConnections() {
     const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/api/connections/`, {
@@ -308,6 +353,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [viewingProfile, setViewingProfile] = useState(null);
   const [connectionRequests, setConnectionRequests] = useState([]);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [messagingWith, setMessagingWith] = useState(null);
 
   useEffect(() => {
     checkAuth();
@@ -423,6 +470,17 @@ function App() {
                     </span>
                   )}
                 </button>
+                <button
+                  onClick={() => setCurrentView('messages')}
+                  className={`px-4 py-2 font-medium relative ${currentView === 'messages' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-600'}`}
+                >
+                  Messages
+                  {unreadMessages > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-xs rounded-full flex items-center justify-center">
+                      {unreadMessages}
+                    </span>
+                  )}
+                </button>
                 <div className="flex items-center gap-2 ml-4 pl-4 border-l-2 border-gray-300">
                   <User className="text-gray-600" size={20} />
                   <span className="text-sm text-gray-600">{currentUser?.name}</span>
@@ -487,6 +545,16 @@ function App() {
             currentUser={currentUser}
             connections={connectionRequests}
             onRefresh={loadConnections}
+            onMessage={(founder) => {
+              setMessagingWith(founder);
+              setCurrentView('messages');
+            }}
+          />
+        ) : currentView === 'messages' ? (
+          <MessagesView 
+            currentUser={currentUser}
+            messagingWith={messagingWith}
+            onBack={() => setCurrentView('connections')}
           />
         ) : null}
       </main>
@@ -1666,6 +1734,7 @@ function CoWorkingView({ currentUser }) {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     loadRooms();
@@ -1674,7 +1743,7 @@ function CoWorkingView({ currentUser }) {
   useEffect(() => {
     if (selectedRoom) {
       loadMessages();
-      const interval = setInterval(loadMessages, 5000); // Refresh every 5 seconds
+      const interval = setInterval(loadMessages, 3000); // Refresh every 3 seconds
       return () => clearInterval(interval);
     }
   }, [selectedRoom]);
@@ -1700,18 +1769,38 @@ function CoWorkingView({ currentUser }) {
     }
   };
 
+  const joinRoom = async (room) => {
+    try {
+      await API.joinRoom(room.id);
+      setSelectedRoom(room);
+      loadMessages();
+    } catch (err) {
+      console.error('Failed to join room:', err);
+      setSelectedRoom(room); // Still open the room even if join fails
+    }
+  };
+
   const sendMessage = async () => {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage) return;
+    if (!trimmedMessage || sending) return;
     
+    setSending(true);
     try {
       console.log('Sending message:', trimmedMessage, 'to room:', selectedRoom.id);
-      await API.sendRoomMessage(selectedRoom.id, trimmedMessage);
+      const result = await API.sendRoomMessage(selectedRoom.id, trimmedMessage);
+      console.log('Message sent successfully:', result);
       setMessage('');
-      await loadMessages(); // Reload messages immediately
+      
+      // Immediately add the message to the UI
+      setMessages([...messages, result]);
+      
+      // Reload after a short delay to get any other new messages
+      setTimeout(loadMessages, 500);
     } catch (err) {
       console.error('Send message error:', err);
       alert('Failed to send message: ' + err.message);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -1732,7 +1821,7 @@ function CoWorkingView({ currentUser }) {
           {rooms.map(room => (
             <button
               key={room.id}
-              onClick={() => setSelectedRoom(room)}
+              onClick={() => joinRoom(room)}
               className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition text-left"
             >
               <div className="flex items-start justify-between mb-4">
@@ -1787,7 +1876,7 @@ function CoWorkingView({ currentUser }) {
   );
 }
 
-function ConnectionsView({ currentUser, connections, onRefresh }) {
+function ConnectionsView({ currentUser, connections, onRefresh, onMessage }) {
   const [loading, setLoading] = useState(false);
 
   const handleAccept = async (connectionId) => {
@@ -1903,8 +1992,11 @@ function ConnectionsView({ currentUser, connections, onRefresh }) {
                     <span className="w-3 h-3 bg-green-500 rounded-full"></span>
                   </div>
                   <p className="text-sm text-gray-600">{otherFounder?.industry}</p>
-                  <p className="text-sm text-gray-700 mt-2">{otherFounder?.current_goal}</p>
-                  <button className="mt-3 px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50 text-sm">
+                  <p className="text-sm text-gray-700 mt-2 line-clamp-2">{otherFounder?.current_goal}</p>
+                  <button 
+                    onClick={() => onMessage(otherFounder)}
+                    className="mt-3 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 text-sm"
+                  >
                     Message
                   </button>
                 </div>
@@ -1920,6 +2012,169 @@ function ConnectionsView({ currentUser, connections, onRefresh }) {
           </div>
         )
       )}
+    </div>
+  );
+}
+
+function MessagesView({ currentUser, messagingWith, onBack }) {
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(messagingWith);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadConversations();
+    if (messagingWith) {
+      loadConversation(messagingWith.id);
+    }
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      const msgs = await API.getMyMessages();
+      // Group messages by conversation partner
+      const convMap = new Map();
+      msgs.forEach(msg => {
+        const partnerId = msg.from_founder === currentUser?.id ? msg.to_founder : msg.from_founder;
+        if (!convMap.has(partnerId)) {
+          convMap.set(partnerId, {
+            founder: msg.from_founder === currentUser?.id ? msg.to_founder_details : msg.from_founder_details,
+            lastMessage: msg,
+            unread: msg.to_founder === currentUser?.id && !msg.read
+          });
+        }
+      });
+      setConversations(Array.from(convMap.values()));
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadConversation = async (founderId) => {
+    try {
+      const msgs = await API.getConversation(founderId);
+      setMessages(msgs);
+    } catch (err) {
+      console.error('Failed to load conversation:', err);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+    
+    try {
+      await API.sendDirectMessage(selectedConversation.id, newMessage);
+      setNewMessage('');
+      loadConversation(selectedConversation.id);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto">
+      <div className="mb-4">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 text-red-600 hover:bg-red-50 rounded font-medium"
+        >
+          ← Back to Connections
+        </button>
+      </div>
+
+      <div className="border-4 border-red-600 rounded-lg bg-white overflow-hidden" style={{height: '600px'}}>
+        <div className="grid grid-cols-3 h-full">
+          {/* Conversations List */}
+          <div className="col-span-1 border-r-2 border-red-600 overflow-y-auto">
+            <div className="p-4 bg-red-600 text-white font-bold">Messages</div>
+            {loading ? (
+              <div className="p-4 text-center text-gray-500">Loading...</div>
+            ) : conversations.length === 0 ? (
+              <div className="p-4 text-center text-gray-500">No messages yet</div>
+            ) : (
+              conversations.map(conv => (
+                <button
+                  key={conv.founder.id}
+                  onClick={() => {
+                    setSelectedConversation(conv.founder);
+                    loadConversation(conv.founder.id);
+                  }}
+                  className={`w-full p-4 text-left border-b-2 border-gray-200 hover:bg-gray-50 ${
+                    selectedConversation?.id === conv.founder.id ? 'bg-red-50' : ''
+                  }`}
+                >
+                  <div className="font-bold">{conv.founder.name}</div>
+                  <div className="text-sm text-gray-600 truncate">{conv.lastMessage.content}</div>
+                  {conv.unread && (
+                    <span className="inline-block mt-1 px-2 py-1 bg-red-600 text-white text-xs rounded-full">New</span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+
+          {/* Message Thread */}
+          <div className="col-span-2 flex flex-col">
+            {selectedConversation ? (
+              <>
+                <div className="p-4 border-b-2 border-gray-200 bg-gray-50">
+                  <h3 className="font-bold">{selectedConversation.name}</h3>
+                  <p className="text-sm text-gray-600">{selectedConversation.industry}</p>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {messages.map(msg => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.from_founder === currentUser?.id ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-xs px-4 py-2 rounded-lg ${
+                          msg.from_founder === currentUser?.id
+                            ? 'bg-red-600 text-white'
+                            : 'bg-gray-200 text-gray-900'
+                        }`}
+                      >
+                        <p>{msg.content}</p>
+                        <p className="text-xs mt-1 opacity-75">
+                          {new Date(msg.created_at).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-4 border-t-2 border-gray-200">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                      placeholder="Type a message..."
+                      className="flex-1 px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                    />
+                    <button
+                      onClick={sendMessage}
+                      className="px-6 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700"
+                    >
+                      <Send size={20} />
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-500">
+                <MessageSquare size={48} className="mb-4" />
+                <p>Select a conversation to start messaging</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

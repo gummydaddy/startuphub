@@ -322,6 +322,31 @@ const API = {
     return response.json();
   },
 
+  async uploadProfileImage(imageFile) {
+    const token = localStorage.getItem('access_token');
+    const formData = new FormData();
+    formData.append('profile_image', imageFile);
+    
+    const response = await fetch(`${API_BASE_URL}/api/founders/upload_image/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData,
+    });
+    if (!response.ok) throw new Error('Failed to upload image');
+    return response.json();
+  },
+
+  async searchFounders(query) {
+    const token = localStorage.getItem('access_token');
+    const response = await fetch(`${API_BASE_URL}/api/founders/search/?q=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return response.json();
+  },
+
   async updateProfile(profileData) {
     const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/api/founders/update_profile/`, {
@@ -355,6 +380,7 @@ function App() {
   const [connectionRequests, setConnectionRequests] = useState([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [messagingWith, setMessagingWith] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     checkAuth();
@@ -1543,16 +1569,34 @@ function IdeaRoomsView({ currentUser }) {
 
 function CoFounderMatchView({ currentUser }) {
   const [founders, setFounders] = useState([]);
+  const [filteredFounders, setFilteredFounders] = useState([]);
   const [filters, setFilters] = useState({
     looking_for: 'all',
     stage: 'all',
     industry: 'all'
   });
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [viewingFounder, setViewingFounder] = useState(null);
 
   useEffect(() => {
     loadFounders();
   }, [filters]);
+
+  useEffect(() => {
+    // Filter founders based on search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const filtered = founders.filter(f => 
+        f.name.toLowerCase().includes(query) ||
+        f.industry?.toLowerCase().includes(query) ||
+        f.current_goal?.toLowerCase().includes(query)
+      );
+      setFilteredFounders(filtered);
+    } else {
+      setFilteredFounders(founders);
+    }
+  }, [searchQuery, founders]);
 
   const loadFounders = async () => {
     setLoading(true);
@@ -1564,6 +1608,7 @@ function CoFounderMatchView({ currentUser }) {
       
       const data = await API.getFounders(filterParams);
       setFounders(data);
+      setFilteredFounders(data);
     } catch (err) {
       console.error('Failed to load founders:', err);
     } finally {
@@ -1574,8 +1619,7 @@ function CoFounderMatchView({ currentUser }) {
   const viewProfile = async (founderId) => {
     try {
       const profile = await API.getFounderProfile(founderId);
-      window.scrollTo(0, 0);
-      alert(`Viewing ${profile.name}'s profile`);
+      setViewingFounder(profile);
     } catch (err) {
       alert('Failed to load profile');
     }
@@ -1589,6 +1633,17 @@ function CoFounderMatchView({ currentUser }) {
       alert(err.message || 'Failed to send connection request');
     }
   };
+
+  if (viewingFounder) {
+    return (
+      <FounderProfileModal
+        founder={viewingFounder}
+        currentUser={currentUser}
+        onClose={() => setViewingFounder(null)}
+        onConnect={sendConnection}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -2028,7 +2083,7 @@ function MessagesView({ currentUser, messagingWith, onBack }) {
     if (messagingWith) {
       loadConversation(messagingWith.id);
     }
-  }, [messagingWith]);
+  }, []);
 
   const loadConversations = async () => {
     try {

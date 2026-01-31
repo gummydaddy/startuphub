@@ -2028,7 +2028,7 @@ function MessagesView({ currentUser, messagingWith, onBack }) {
     if (messagingWith) {
       loadConversation(messagingWith.id);
     }
-  }, []);
+  }, [messagingWith]);
 
   const loadConversations = async () => {
     try {

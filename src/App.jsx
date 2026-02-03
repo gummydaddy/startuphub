@@ -2521,7 +2521,7 @@ function ProfileView({ profile, currentUser, onUpdate, onBack }) {
 
             <div className="pt-4 border-t-2 border-gray-200">
               <p className="text-sm text-gray-500">
-                Member since {new Date(profile?.created_at).toLocaleDateString()}
+                {profile?.created_at && `Member since ${new Date(profile.created_at).toLocaleDateString()}`}
               </p>
             </div>
           </div>

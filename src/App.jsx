@@ -1931,476 +1931,6 @@ function CoWorkingView({ currentUser }) {
   );
 }
 
-function ConnectionsView({ currentUser, connections, onRefresh, onMessage }) {
-  const [loading, setLoading] = useState(false);
-
-  const handleAccept = async (connectionId) => {
-    setLoading(true);
-    try {
-      await API.acceptConnection(connectionId);
-      alert('Connection accepted!');
-      onRefresh();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const pendingReceived = connections.filter(c => 
-    c.status === 'pending' && c.to_founder === currentUser?.id
-  );
-  const pendingSent = connections.filter(c => 
-    c.status === 'pending' && c.from_founder === currentUser?.id
-  );
-  const accepted = connections.filter(c => c.status === 'accepted');
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div>
-        <h2 className="text-3xl font-bold mb-2">🤝 Connections</h2>
-        <p className="text-gray-600">Manage your founder network</p>
-      </div>
-
-      {/* Pending Requests (Received) */}
-      {pendingReceived.length > 0 && (
-        <div className="border-4 border-red-600 rounded-lg p-6 bg-white">
-          <h3 className="text-xl font-bold mb-4">
-            Pending Requests ({pendingReceived.length})
-          </h3>
-          <div className="space-y-4">
-            {pendingReceived.map(conn => (
-              <div key={conn.id} className="border-2 border-gray-300 rounded-lg p-4 flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold">{conn.from_founder_details?.name || 'Unknown Founder'}</h4>
-                  <p className="text-sm text-gray-600">{conn.from_founder_details?.industry}</p>
-                  {conn.message && (
-                    <p className="text-sm text-gray-700 mt-2 italic">"{conn.message}"</p>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">
-                    {new Date(conn.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleAccept(conn.id)}
-                    disabled={loading}
-                    className="px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    className="px-4 py-2 border-2 border-gray-300 rounded font-medium hover:border-red-600"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sent Requests */}
-      {pendingSent.length > 0 && (
-        <div className="border-2 border-gray-300 rounded-lg p-6 bg-white">
-          <h3 className="text-xl font-bold mb-4">
-            Sent Requests ({pendingSent.length})
-          </h3>
-          <div className="space-y-4">
-            {pendingSent.map(conn => (
-              <div key={conn.id} className="border-2 border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-bold">{conn.to_founder_details?.name || 'Unknown Founder'}</h4>
-                    <p className="text-sm text-gray-600">{conn.to_founder_details?.industry}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Sent {new Date(conn.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">
-                    Pending
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Accepted Connections */}
-      {accepted.length > 0 ? (
-        <div className="border-2 border-gray-300 rounded-lg p-6 bg-white">
-          <h3 className="text-xl font-bold mb-4">
-            My Connections ({accepted.length})
-          </h3>
-          <div className="grid md:grid-cols-2 gap-4">
-            {accepted.map(conn => {
-              const otherFounder = conn.from_founder === currentUser?.id 
-                ? conn.to_founder_details 
-                : conn.from_founder_details;
-              
-              return (
-                <div key={conn.id} className="border-2 border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-bold">{otherFounder?.name || 'Unknown'}</h4>
-                    <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                  </div>
-                  <p className="text-sm text-gray-600">{otherFounder?.industry}</p>
-                  <p className="text-sm text-gray-700 mt-2 line-clamp-2">{otherFounder?.current_goal}</p>
-                  <button 
-                    onClick={() => onMessage(otherFounder)}
-                    className="mt-3 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700 text-sm"
-                  >
-                    Message
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        !pendingReceived.length && !pendingSent.length && (
-          <div className="text-center py-12 border-2 border-gray-300 rounded-lg">
-            <Users className="mx-auto mb-4 text-gray-400" size={48} />
-            <p className="text-gray-600">No connections yet. Start connecting with founders!</p>
-          </div>
-        )
-      )}
-    </div>
-  );
-}
-
-function MessagesView({ currentUser, messagingWith, onBack }) {
-  const [conversations, setConversations] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(messagingWith);
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadConversations();
-    if (messagingWith) {
-      loadConversation(messagingWith.id);
-    }
-  }, []);
-
-  const loadConversations = async () => {
-    try {
-      const msgs = await API.getMyMessages();
-      // Group messages by conversation partner
-      const convMap = new Map();
-      msgs.forEach(msg => {
-        const partnerId = msg.from_founder === currentUser?.id ? msg.to_founder : msg.from_founder;
-        if (!convMap.has(partnerId)) {
-          convMap.set(partnerId, {
-            founder: msg.from_founder === currentUser?.id ? msg.to_founder_details : msg.from_founder_details,
-            lastMessage: msg,
-            unread: msg.to_founder === currentUser?.id && !msg.read
-          });
-        }
-      });
-      setConversations(Array.from(convMap.values()));
-    } catch (err) {
-      console.error('Failed to load conversations:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadConversation = async (founderId) => {
-    try {
-      const msgs = await API.getConversation(founderId);
-      setMessages(msgs);
-    } catch (err) {
-      console.error('Failed to load conversation:', err);
-    }
-  };
-
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation) return;
-    
-    try {
-      await API.sendDirectMessage(selectedConversation.id, newMessage);
-      setNewMessage('');
-      loadConversation(selectedConversation.id);
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-4">
-        <button
-          onClick={onBack}
-          className="px-4 py-2 text-red-600 hover:bg-red-50 rounded font-medium"
-        >
-          ← Back to Connections
-        </button>
-      </div>
-
-      <div className="border-4 border-red-600 rounded-lg bg-white overflow-hidden" style={{height: '600px'}}>
-        <div className="grid grid-cols-3 h-full">
-          {/* Conversations List */}
-          <div className="col-span-1 border-r-2 border-red-600 overflow-y-auto">
-            <div className="p-4 bg-red-600 text-white font-bold">Messages</div>
-            {loading ? (
-              <div className="p-4 text-center text-gray-500">Loading...</div>
-            ) : conversations.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">No messages yet</div>
-            ) : (
-              conversations.map(conv => (
-                <button
-                  key={conv.founder.id}
-                  onClick={() => {
-                    setSelectedConversation(conv.founder);
-                    loadConversation(conv.founder.id);
-                  }}
-                  className={`w-full p-4 text-left border-b-2 border-gray-200 hover:bg-gray-50 ${
-                    selectedConversation?.id === conv.founder.id ? 'bg-red-50' : ''
-                  }`}
-                >
-                  <div className="font-bold">{conv.founder.name}</div>
-                  <div className="text-sm text-gray-600 truncate">{conv.lastMessage.content}</div>
-                  {conv.unread && (
-                    <span className="inline-block mt-1 px-2 py-1 bg-red-600 text-white text-xs rounded-full">New</span>
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-
-          {/* Message Thread */}
-          <div className="col-span-2 flex flex-col">
-            {selectedConversation ? (
-              <>
-                <div className="p-4 border-b-2 border-gray-200 bg-gray-50">
-                  <h3 className="font-bold">{selectedConversation.name}</h3>
-                  <p className="text-sm text-gray-600">{selectedConversation.industry}</p>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {messages.map(msg => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${msg.from_founder === currentUser?.id ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-xs px-4 py-2 rounded-lg ${
-                          msg.from_founder === currentUser?.id
-                            ? 'bg-red-600 text-white'
-                            : 'bg-gray-200 text-gray-900'
-                        }`}
-                      >
-                        <p>{msg.content}</p>
-                        <p className="text-xs mt-1 opacity-75">
-                          {new Date(msg.created_at).toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-4 border-t-2 border-gray-200">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                      placeholder="Type a message..."
-                      className="flex-1 px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-                    />
-                    <button
-                      onClick={sendMessage}
-                      className="px-6 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700"
-                    >
-                      <Send size={20} />
-                    </button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-500">
-                <MessageSquare size={48} className="mb-4" />
-                <p>Select a conversation to start messaging</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProfileView({ profile, currentUser, onUpdate, onBack }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(profile || {});
-  const [saving, setSaving] = useState(false);
-
-  const isOwnProfile = profile?.id === currentUser?.id;
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = await API.updateProfile(editData);
-      onUpdate(updated);
-      setIsEditing(false);
-      alert('Profile updated successfully!');
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-4">
-        <button
-          onClick={onBack}
-          className="px-4 py-2 text-red-600 hover:bg-red-50 rounded font-medium"
-        >
-          ← Back
-        </button>
-      </div>
-
-      <div className="border-4 border-red-600 rounded-lg p-8 bg-white">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h2 className="text-3xl font-bold mb-2">{profile?.name}</h2>
-            <p className="text-gray-600">{profile?.country} • {profile?.timezone}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="px-4 py-2 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
-              {profile?.stage}
-            </span>
-            {isOwnProfile && (
-              <button
-                onClick={() => setIsEditing(!isEditing)}
-                className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50"
-              >
-                {isEditing ? 'Cancel' : 'Edit Profile'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {isEditing ? (
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium mb-2">Name</label>
-              <input
-                type="text"
-                value={editData.name}
-                onChange={(e) => setEditData({...editData, name: e.target.value})}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Country</label>
-                <input
-                  type="text"
-                  value={editData.country}
-                  onChange={(e) => setEditData({...editData, country: e.target.value})}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Timezone</label>
-                <input
-                  type="text"
-                  value={editData.timezone}
-                  onChange={(e) => setEditData({...editData, timezone: e.target.value})}
-                  className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Industry</label>
-              <input
-                type="text"
-                value={editData.industry}
-                onChange={(e) => setEditData({...editData, industry: e.target.value})}
-                className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Current Goal</label>
-              <textarea
-                value={editData.current_goal}
-                onChange={(e) => setEditData({...editData, current_goal: e.target.value})}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
-                rows="4"
-              />
-            </div>
-
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-bold text-lg mb-2">Industry</h3>
-              <p className="text-gray-700">{profile?.industry}</p>
-            </div>
-
-            <div>
-              <h3 className="font-bold text-lg mb-2">Skills</h3>
-              <div className="flex flex-wrap gap-2">
-                {profile?.skills?.map((skill, i) => (
-                  <span key={i} className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-bold text-lg mb-2">Looking For</h3>
-              <p className="text-gray-700 capitalize">{profile?.looking_for}</p>
-            </div>
-
-            <div>
-              <h3 className="font-bold text-lg mb-2">Personality</h3>
-              <div className="flex flex-wrap gap-2">
-                {profile?.personality_tags?.map((tag, i) => (
-                  <span key={i} className="px-3 py-1 bg-red-50 border-2 border-red-600 text-red-600 rounded text-sm font-medium">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-bold text-lg mb-2">Current Goal</h3>
-              <p className="text-gray-700">{profile?.current_goal}</p>
-            </div>
-
-            <div className="pt-4 border-t-2 border-gray-200">
-              <p className="text-sm text-gray-500">
-                Member since {new Date(profile?.created_at).toLocaleDateString()}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-
 // UPDATED ConnectionsView with Search
 function ConnectionsView({ currentUser, connections, onRefresh, onMessage, onViewProfile }) {
   const [loading, setLoading] = useState(false);
@@ -2831,6 +2361,171 @@ function MessagesView({ currentUser, messagingWith, onBack, onViewProfile }) {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileView({ profile, currentUser, onUpdate, onBack }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState(profile || {});
+  const [saving, setSaving] = useState(false);
+
+  const isOwnProfile = profile?.id === currentUser?.id;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updated = await API.updateProfile(editData);
+      onUpdate(updated);
+      setIsEditing(false);
+      alert('Profile updated successfully!');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-4">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 text-red-600 hover:bg-red-50 rounded font-medium"
+        >
+          ← Back
+        </button>
+      </div>
+
+      <div className="border-4 border-red-600 rounded-lg p-8 bg-white">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h2 className="text-3xl font-bold mb-2">{profile?.name}</h2>
+            <p className="text-gray-600">{profile?.country} • {profile?.timezone}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="px-4 py-2 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
+              {profile?.stage}
+            </span>
+            {isOwnProfile && (
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50"
+              >
+                {isEditing ? 'Cancel' : 'Edit Profile'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium mb-2">Name</label>
+              <input
+                type="text"
+                value={editData.name}
+                onChange={(e) => setEditData({...editData, name: e.target.value})}
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Country</label>
+                <input
+                  type="text"
+                  value={editData.country}
+                  onChange={(e) => setEditData({...editData, country: e.target.value})}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Timezone</label>
+                <input
+                  type="text"
+                  value={editData.timezone}
+                  onChange={(e) => setEditData({...editData, timezone: e.target.value})}
+                  className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Industry</label>
+              <input
+                type="text"
+                value={editData.industry}
+                onChange={(e) => setEditData({...editData, industry: e.target.value})}
+                className="w-full px-4 py-2 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Current Goal</label>
+              <textarea
+                value={editData.current_goal}
+                onChange={(e) => setEditData({...editData, current_goal: e.target.value})}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded focus:border-red-600 outline-none"
+                rows="4"
+              />
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full px-6 py-3 bg-red-600 text-white rounded font-medium hover:bg-red-700 disabled:bg-gray-400"
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-bold text-lg mb-2">Industry</h3>
+              <p className="text-gray-700">{profile?.industry}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Skills</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile?.skills?.map((skill, i) => (
+                  <span key={i} className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Looking For</h3>
+              <p className="text-gray-700 capitalize">{profile?.looking_for}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Personality</h3>
+              <div className="flex flex-wrap gap-2">
+                {profile?.personality_tags?.map((tag, i) => (
+                  <span key={i} className="px-3 py-1 bg-red-50 border-2 border-red-600 text-red-600 rounded text-sm font-medium">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Current Goal</h3>
+              <p className="text-gray-700">{profile?.current_goal}</p>
+            </div>
+
+            <div className="pt-4 border-t-2 border-gray-200">
+              <p className="text-sm text-gray-500">
+                Member since {new Date(profile?.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

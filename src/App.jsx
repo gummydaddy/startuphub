@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Users, MessageSquare, Target, TrendingUp, Video, X, Check, RefreshCw, Send, Heart, Rocket, LogOut, User } from 'lucide-react';
+import { Camera, Users, MessageSquare, Target, TrendingUp, Video, X, Check, RefreshCw, Send, Heart, Rocket, LogOut, User, Search, Upload } from 'lucide-react';
 
 // API Configuration - Using socyfie.pythonanywhere.com
 const API_BASE_URL = 'https://socyfie.pythonanywhere.com';

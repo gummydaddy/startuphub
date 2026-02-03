@@ -371,6 +371,216 @@ const API = {
   }
 };
 
+
+// ============= REUSABLE COMPONENTS =============
+
+function SearchBar({ onSearch, placeholder = "Search by name or username..." }) {
+  const [query, setQuery] = useState('');
+  
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+    onSearch(value);
+  };
+  
+  return (
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+      <input
+        type="text"
+        value={query}
+        onChange={handleSearch}
+        placeholder={placeholder}
+        className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-600 outline-none"
+      />
+    </div>
+  );
+}
+
+function FounderProfileModal({ founder, currentUser, onClose, onConnect, onMessage }) {
+  if (!founder) return null;
+  const isOwnProfile = founder?.id === currentUser?.id;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              {founder.profile_image_url ? (
+                <img 
+                  src={founder.profile_image_url} 
+                  alt={founder.name}
+                  className="w-20 h-20 rounded-full object-cover border-4 border-red-600"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center text-white text-2xl font-bold">
+                  {founder.name?.charAt(0) || '?'}
+                </div>
+              )}
+              <div>
+                <h2 className="text-2xl font-bold">{founder.name}</h2>
+                <p className="text-gray-600">@{founder.username || founder.email?.split('@')[0]}</p>
+                <p className="text-sm text-gray-500">{founder.country} • {founder.timezone}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-full"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <span className="px-4 py-2 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
+                {founder.stage}
+              </span>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Industry</h3>
+              <p className="text-gray-700">{founder.industry}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Skills</h3>
+              <div className="flex flex-wrap gap-2">
+                {founder.skills?.map((skill, i) => (
+                  <span key={i} className="px-3 py-1 bg-gray-100 rounded text-sm font-medium">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Looking For</h3>
+              <p className="text-gray-700 capitalize">{founder.looking_for}</p>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Personality</h3>
+              <div className="flex flex-wrap gap-2">
+                {founder.personality_tags?.map((tag, i) => (
+                  <span key={i} className="px-3 py-1 bg-red-50 border-2 border-red-600 text-red-600 rounded text-sm font-medium">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-bold text-lg mb-2">Current Goal</h3>
+              <p className="text-gray-700">{founder.current_goal}</p>
+            </div>
+
+            {!isOwnProfile && (
+              <div className="flex gap-3 pt-4 border-t-2 border-gray-200">
+                <button
+                  onClick={() => {
+                    onConnect(founder);
+                    onClose();
+                  }}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+                >
+                  Connect
+                </button>
+                {onMessage && (
+                  <button
+                    onClick={() => {
+                      onMessage(founder);
+                      onClose();
+                    }}
+                    className="flex-1 px-6 py-3 border-2 border-red-600 text-red-600 rounded-lg font-medium hover:bg-red-50"
+                  >
+                    Message
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FounderCard({ founder, onConnect, onView }) {
+  return (
+    <div className="border-2 border-gray-300 rounded-lg p-6 bg-white hover:border-red-600 transition">
+      <div className="flex items-start gap-4 mb-4">
+        {founder.profile_image_url ? (
+          <img 
+            src={founder.profile_image_url} 
+            alt={founder.name}
+            className="w-16 h-16 rounded-full object-cover border-2 border-red-600"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center text-white text-xl font-bold">
+            {founder.name?.charAt(0) || '?'}
+          </div>
+        )}
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-xl font-bold">{founder.name}</h3>
+            {founder.is_online && (
+              <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+            )}
+          </div>
+          <p className="text-sm text-gray-600">@{founder.username || founder.email?.split('@')[0]}</p>
+          <p className="text-gray-600">{founder.country} • {founder.timezone}</p>
+        </div>
+        <span className="px-3 py-1 bg-red-600 text-white rounded-full text-sm font-medium capitalize">
+          {founder.stage}
+        </span>
+      </div>
+
+      <div className="space-y-3 mb-4">
+        <div>
+          <span className="font-medium">Industry:</span> {founder.industry}
+        </div>
+        <div>
+          <span className="font-medium">Skills:</span>
+          <div className="flex flex-wrap gap-2 mt-1">
+            {founder.skills?.slice(0, 3).map((skill, i) => (
+              <span key={i} className="px-2 py-1 bg-gray-100 rounded text-sm font-medium">
+                {skill}
+              </span>
+            ))}
+            {founder.skills?.length > 3 && (
+              <span className="px-2 py-1 bg-gray-100 rounded text-sm font-medium">
+                +{founder.skills.length - 3} more
+              </span>
+            )}
+          </div>
+        </div>
+        <div>
+          <span className="font-medium">Goal:</span>
+          <p className="text-gray-700 mt-1 text-sm line-clamp-2">{founder.current_goal}</p>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button 
+          onClick={() => onConnect(founder)}
+          className="flex-1 px-4 py-2 bg-red-600 text-white rounded font-medium hover:bg-red-700"
+        >
+          Connect
+        </button>
+        <button 
+          onClick={() => onView(founder)}
+          className="px-4 py-2 border-2 border-red-600 text-red-600 rounded font-medium hover:bg-red-50"
+        >
+          View Profile
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function App() {
   const [currentView, setCurrentView] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
